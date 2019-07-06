@@ -1,0 +1,107 @@
+Pi to Arduino Protocol
+
+Command Code (Int8):
+
+Pi to Arduino Command
+"<INT> (<INT> <INT>)\n"
+<Command Code> (Optional Integer Args) newline
+Response:
+"<INT> <INT> <INT> (INT|FLOAT(n))\n"
+<Command Code> <Response Code> <Number of trailing Integers|Floats> (Optional Integers) newline
+
+Command Notes:
+PWM Set -255 to 255 (integers)
+IR Val Query 0 to 1023 * 5 values (0.0049v per 1)
+
+
+"Command Set"
+
+## Command Set
+
+* Check that the QuickBot is up and running:
+  * Command
+
+		`"$CHECK*\n"`
+
+  * Response:
+
+		`'Hello from QuickBot\n'`
+
+* Set PWM values (e.g. to left wheel 70% backwards, right wheel 90% forward):
+  * Command
+
+        `"$PWM=-70,90*\n"`
+
+* Get PWM values:
+  * Command
+
+		`"$PWM?*\n"`
+
+  * Example response:
+
+		`'[-70, 90]\n'`
+
+* Get IR values:
+  * Command
+
+		`"$IRVAL?*\n"`
+
+  * Example response:
+
+		`'[402.0, 54.0, 33.0, 805.0, 24.0]\n'`
+
+* Get raw encoder values (value stored in encoder, only resets on power cycle):
+  * Command
+
+		`"$ENRAW?*\n"`
+
+  * Example response:
+
+		`'[1001, -5362]\n'`
+
+* Get current encoder values:
+  * Command
+
+        `"$ENVAL?*\n"`
+
+  * Example response:
+
+        `'[-16, 12]\n'`
+
+* Set encoder values
+  * Command
+
+      `$ENVAL=10,-10*\n"`
+
+* Get encoder value offsets from raw values:
+  * Command
+
+      `"$ENOFFSET?*\n"`
+
+  * Example response:
+
+      `'[10, 20]\n'`
+
+* Set encoder value offsets from raw values:
+  * Command
+
+      `"$ENOFFSET=0,0*\n"`
+
+* Reset encoder values to zero:
+  * Command
+
+      `"$ENRESET*\n"`
+
+* Get current encoder velocity values:
+  * Command
+
+        `"$ENVEL?*\n"`
+
+  * Example response:
+
+        `'[-16, 12]\n'`
+
+* End program QuickBot program
+  * Command:
+
+ 		`"$END*\n"`
