@@ -1,19 +1,64 @@
 Pi to Arduino Protocol
 
+Command list is documented PySimiam /pysimiam-coursera-week6/robots/qb_realtime_comm.py python file and is different than what's in the BBB file.
+
 Command Code (Int8):
 
 Pi to Arduino Command
 "<INT> (<INT> <INT>)\n"
 <Command Code> (Optional Integer Args) newline
-Response:
+
+Command Codes:
+'10':	RESET command and will stop the redbot-quikbot, once a reset command is received the motor power will be set to 0, the servo-sensor motors will be stopped and the bot will  stop all movement. The bot will stop listening to the serial interface after processing this command and sending a response. 
+
+'20':	PWM Set command sets the power of the two motors, expects two int arguments each in range o -255..+255, LEFT motor is first and the second is RIGHT motor
+
+'30':	PWM query command returns two int arguments, which is the current power to the two motors Range of ints -255..+255, LEFT motor is first and the second is RIGHT motor
+
+'40':	ENVAL query command, returns two int encoder value integers (unclear what range is but Int16 at least and it's signed, LEFT motor is first and the second is RIGHT motor
+
+'50':	ENVEL query command, returns two float velocities of the two wheels, this is a calculation based on 1 second of time and will calculate the velocity = (delta-tick)/ticks-rotation*2*PI*R(adits of wheel)/seconds, and is two floating point numbers,  LEFT motor is first and the second is RIGHT motor
+
+'60':	IRVAL query command, returns the 5 int IR sensor values, range of values is 0..1023, We will use 1204 to indicate the sensor is not present. The sensors are provided in a clockwise direction starting at the back of the bot, so the first IR value reported is right behind the LEFT wheel and the last IR value reported is right behind the RIGHT wheel when looking at the bot from the top.
+
+'70':	CHECK query command, an artifact of this command is that the wheel motor encoders will be cleared, i.e, set to 0, the servo-sensor motor will begin scanning and the motor power will be set to 0. Note a CHECK command should be sent as the first command to the bot
+
+Command Response:
 "<INT> <INT> <INT> (INT|FLOAT(n))\n"
-<Command Code> <Response Code> <Number of trailing Integers|Floats> (Optional Integers) newline
+<Command Code> <Response Code> <Number of trailing Integers|Floats> (Optional Integers) newline.
 
-Command Notes:
-PWM Set -255 to 255 (integers)
-IR Val Query 0 to 1023 * 5 values (0.0049v per 1)
+Response codes returned from Piduino_quickbot:
+'00':	Command received and processed, number of integers/floats returned is indicated by the next int. Just for reference purposes, PWM & ENVAL query return 2 Ints, ENVEL query return 2 Floats and IRVAL query returns 5 Ints
+
+'100':	Unknown command code received, no action taken by Piduino_quickbot
+'110': 	No INT values were found, for PWM, there are supposed to be two INT values, and we could not detect any
+'120':	2nd INT value could not be found, for PWM command there are supposed to be two INTs, we found the first but were unable to find the second
+'130': 	INT values out of range, the PWM ints can be in the range of -255..+255 anything outside that range will cause the command to be rejected and the values ignored
 
 
+
+Some additional command Notes:
+- PWM Set -255 to 255 (integers)
+- IR Val Query 0 to 1023 * 5 values (0.0049v per 1), 1024 is used to indicate the sensor is NOT present.
+- The following commands in BBB code are not supported by the Piduino_quickbot
+	1) "$ENRAW?*" query the raw encoders, any encoder query supplies the raw encoders
+	2) "$ENOFFSET=n,n?*" query encoder offset (see ENRAW above)
+	3) "$ENRESET*" reset the encoder values to 0, We have implemented this as part of CHECK command (see above)
+	4) "$END*", PI0w can use the RESET command to stop wheel motors and sensor rotation, but there's no way to end Piduino_quickbot program from running other than to power down the bot
+
+These are the defined commands that are sent to the BBB from the PySimiam week6 to the real robot:
+
+	connection.sendtorobot('PWM=0,0')
+            connection.sendtorobot('RESET')
+        connection.sendtorobot( 'PWM={0},{1}'.format(l, r) )
+        connection.sendtorobot('PWM?')
+        connection.sendtorobot('ENVAL?')
+        connection.sendtorobot('ENVEL?')
+        connection.sendtorobot('IRVAL?')
+            connection.sendtorobot('CHECK')
+
+
+This is from the BBB code segment that identifies the commands it receives from the simulator. 
 "Command Set"
 
 ## Command Set
