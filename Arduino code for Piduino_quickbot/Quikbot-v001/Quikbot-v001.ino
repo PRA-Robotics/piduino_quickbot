@@ -84,13 +84,13 @@ void loop()
   
   String morse2display="012345678901234567890";
   
-  const int RESET=10, PWM_set=20, PWM_enq=30, ENVAL_enq=40, ENVEL_enq=50, IRVAL_enq=60, CHECK=70;
+  const int RESET=10, PWM_set=20, PWM_enq=30, ENVAL_enq=40, ENVEL_enq=50, IRVAL_enq=60, CHECK=70, ENC_test=255;
         // Define command codes
   const int CMD_ok=00, CMD_unk=100, INT_zero=110, INT_one=120, INT_out_of_range = 130;
   int PWM_left = 0, PWM_right=0; 
   long PWM_left_inp=0, PWM_right_inp=0, ENC_left=0, ENC_right=0, ENC_left_delta = 0, ENC_right_delta=0;
   const float WHEEL_RADIUS = 6.5/2; // CM as measured by Ray
-  const int TICKS_PER_REVOLUTION = 255; // SWAG for the moment, need to figure out how to measure this
+  const int TICKS_PER_REVOLUTION = 189; // ranges from 178 to 200 but best luck with 189?
   float VEL_left = 0.0, VEL_right= 0.0;
   
   digitalWrite(13, LOW);
@@ -198,6 +198,40 @@ void loop()
         case CHECK: {
           // Clear encoders and send back command rcvd & processed good status
           encoder.clearEnc(BOTH);
+          
+          CMD_response = CMD_ok + 0 + " \n";
+          Serial.print(CMD_response);
+          break;
+        }
+        case ENC_test: { // a tester to run to encoder for L and R wheel
+          // stop motors
+          motors.leftMotor(0);
+          motors.rightMotor(0);
+
+          // figure out what the encoder value we need to reach 
+          ENC_left_delta = Serial.parseInt(); // get encoder values for both wheels.
+          ENC_right_delta = Serial.parseInt();
+          ENC_left_delta = ENC_left_delta + encoder.getTicks(LEFT);
+          ENC_right_delta = ENC_right_delta + encoder.getTicks(RIGHT);
+
+          // test left motor encoder 
+          ENC_left = encoder.getTicks(LEFT);
+          while (ENC_left < ENC_left_delta) {
+            motors.leftMotor(-32);
+            delay(100);
+            ENC_left=encoder.getTicks(LEFT);
+          }
+          motors.leftMotor(0);
+          delay(5000);
+          
+          // test right motor encoder 
+          ENC_right=encoder.getTicks(RIGHT);
+          while (ENC_right < ENC_right_delta) {
+            motors.rightMotor(32);
+            delay(50);
+            ENC_right=encoder.getTicks(RIGHT);
+          }
+          motors.rightMotor(0);
           
           CMD_response = CMD_ok + 0 + " \n";
           Serial.print(CMD_response);
