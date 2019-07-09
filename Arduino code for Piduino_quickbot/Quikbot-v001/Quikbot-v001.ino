@@ -212,8 +212,8 @@ void loop()
 
           ENC_left_delta = (float) (encoder.getTicks(LEFT) - ENC_left);
           ENC_right_delta = (float) (encoder.getTicks(RIGHT) - ENC_right);
-          VEL_left = (ENC_left_delta/TICKS_PER_REVOLUTION)*2*PI*WHEEL_RADIUS;
-          VEL_right = (ENC_right_delta/TICKS_PER_REVOLUTION)*2*PI*WHEEL_RADIUS;
+          VEL_left = (ENC_left_delta/TICKS_PER_REVOLUTION)*2.0*PI*WHEEL_RADIUS;
+          VEL_right = (ENC_right_delta/TICKS_PER_REVOLUTION)*2.0*PI*WHEEL_RADIUS;
           
           gen_response2_float(CMD_ok, VEL_left, VEL_right);
           Serial.write("Wheel velocity query rcvd \n");
