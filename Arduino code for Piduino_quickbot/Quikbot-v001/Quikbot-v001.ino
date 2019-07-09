@@ -1,13 +1,6 @@
 /* 
- *  SKetch accepts character string of Pysimiam commands
- *  "$PWM=0,0*\n" sets left and right motor to power 0
- *  "$PWM=l,r*\n sets left motor to power l and right motor to power r where l&r are integers
- *  "$PWM?*\n" I think asks what the two motors are powered at returns integers,
- *  "$ENVAL?\n" Retrieves the encoders TICK walues for the two motors assume Tick_left, Tick-Right (integers [assume 32 bit]
- *  "$ENVEL?\n" Retrieves the velocities of the two motors (2 integers [assume 32 bit]
- *  "$IRVAL?*\n" I assum this returns 5 values that are the voltage ot the 5 IR sensors
- *  "$CHECK*\n" this is a ping to the robot not sure what it sends back but anything works
- *  v002 26 June 2019 RLL
+ *  SKetch accepts numerical versions of Pysimiam commands
+ *  08july2019 version
  */
 #include <RedBot.h>
 
@@ -75,6 +68,51 @@ void string2morse(String error_string)
   delay(7*dot_time_unit);             // delay 7 dots between words 
 } // end string2morse
 
+void gen_response5(int resp, int i1, int i2, int i3, int i4, int i5)
+{ 
+  Serial.print(resp, DEC);
+  Serial.print(" ");
+  Serial.print(5, DEC);
+  Serial.print(" ");
+  Serial.print(i1, DEC);
+  Serial.print(" ");
+  Serial.print(i2, DEC);
+  Serial.print(" ");
+  Serial.print(i3, DEC);
+  Serial.print(" ");
+  Serial.print(i4, DEC);
+  Serial.print(" ");
+  Serial.println(i5, DEC);
+}
+
+void gen_response2(int resp, int i1, int i2)
+{ 
+  Serial.print(resp, DEC);
+  Serial.print(" ");
+  Serial.print(2, DEC);
+  Serial.print(" ");
+  Serial.print(i1, DEC);
+  Serial.print(" ");
+  Serial.println(i2, DEC);
+}
+
+void gen_response2_float(int resp, float f1, float f2)
+{ 
+  Serial.print(resp, DEC);
+  Serial.print(" ");
+  Serial.print(2, DEC);
+  Serial.print(" ");
+  Serial.print(f1, 4); // to four decimal places
+  Serial.print(" ");
+  Serial.println(f2, 4); // to four decimal places
+}
+
+void gen_response0(int resp)
+{ 
+  Serial.print(resp, DEC);
+  Serial.print(" ");
+  Serial.println(0, DEC);
+}
 void loop()
 {
   int command_code=0; 
@@ -86,19 +124,19 @@ void loop()
   
   const int RESET=10, PWM_set=20, PWM_enq=30, ENVAL_enq=40, ENVEL_enq=50, IRVAL_enq=60, CHECK=70, ENC_test=255;
         // Define command codes
-  const int CMD_ok=00, CMD_unk=100, INT_zero=110, INT_one=120, INT_out_of_range = 130;
+  const int CMD_ok=0, CMD_unk=100, INT_zero=110, INT_one=120, INT_out_of_range = 130;
   int PWM_left = 0, PWM_right=0; 
-  long PWM_left_inp=0, PWM_right_inp=0, ENC_left=0, ENC_right=0, ENC_left_delta = 0, ENC_right_delta=0;
+  long PWM_left_inp=0, PWM_right_inp=0, ENC_left=0, ENC_right=0;
   const float WHEEL_RADIUS = 6.5/2; // CM as measured by Ray
-  const int TICKS_PER_REVOLUTION = 189; // ranges from 178 to 200 but best luck with 189?
-  float VEL_left = 0.0, VEL_right= 0.0;
+  const float TICKS_PER_REVOLUTION = 189.0; // ranges from 178 to 200 but best luck with 189?
+  float VEL_left = 0.0, VEL_right= 0.0, ENC_left_delta = 0.0, ENC_right_delta=0.0;
   
   digitalWrite(13, LOW);
   
   // check if command available from USB port
   if (Serial) {
     len_input=Serial.available();
-    if (len_input > 1) {
+    if (len_input > 2) {
       command_code = Serial.parseInt();
       display_morsecode(String(command_code));
      
@@ -108,25 +146,23 @@ void loop()
           // reset all robot sensors, motors, etc.
           motors.rightMotor(0);
           motors.leftMotor(0);
-          motors.stop();
-          motors.brake();
-          CMD_response = CMD_ok + 0 + " \n";
-          Serial.print(CMD_response);
+          PWM_left=0;
+          PWM_right-0;
+          gen_response0(CMD_ok);
+          Serial.write("RESET Rcvd \n");
           break;
         }
         case PWM_set: {
           // set motor power to L, R
           PWM_left_inp= Serial.parseInt();
           PWM_right_inp= Serial.parseInt();
-          display_morsecode(String(PWM_left_inp + "SOS" + PWM_right_inp));
+          // display_morsecode(String(PWM_left_inp + "SOS" + PWM_right_inp));
           if (PWM_left_inp == 0 && PWM_right_inp == 0) {
-            CMD_response = INT_zero + 0 + " \n";
-            Serial.print(CMD_response);
+            gen_response0(INT_zero);
             break;
           }
           if (PWM_right_inp == 0) { 
-            CMD_response = INT_one + 0 +  " \n";
-            Serial.print(CMD_response);
+            gen_response0(INT_one);
             break;
           }
           if (PWM_left_inp == 256) { // we use 256 to indicate a power level of 0
@@ -137,27 +173,25 @@ void loop()
           }
           if (PWM_left_inp > -255 && PWM_left_inp < 255 && PWM_right_inp > -255 && PWM_right_inp < 255) {
             // PWM settings have to be in range -255..+255
+            PWM_left = PWM_left_inp; // save the power values as there's no way of reading them,
+            PWM_right = PWM_right_inp;
             motors.leftMotor(PWM_left_inp);
             motors.rightMotor(PWM_right_inp);
             
-            PWM_left = PWM_left_inp; // save the power values as there's no way of reading them,
-            PWM_right = PWM_right_inp;
-           
-            CMD_response = CMD_ok + 2 + PWM_left + PWM_right + " \n";
-            Serial.print(CMD_response);
+            gen_response2(CMD_ok, PWM_left, PWM_right);
+            Serial.write("Set PWM rcvd \n");
             break;
           } else {
             // some power value is out of range
-            CMD_response = CMD_ok + 2 + PWM_left + PWM_right + " \n";
-            Serial.print(CMD_response);
+            gen_response2(INT_out_of_range, PWM_left, PWM_right);
             break;
           }
         } // end power motor set command functionality
         case PWM_enq: {
           // send motor power values L,r saved from last power set cmd;
           
-          CMD_response = CMD_ok + 2 + PWM_left + PWM_right + " \n";
-          Serial.print(CMD_response);
+          gen_response2(CMD_ok, PWM_left, PWM_right);
+          Serial.write("PWM query rcvd \n");
           break;
         }
         case ENVAL_enq: {
@@ -165,8 +199,8 @@ void loop()
           ENC_left= encoder.getTicks(LEFT);
           ENC_right= encoder.getTicks(RIGHT);
           
-          CMD_response = CMD_ok + 2 + ENC_left + ENC_right + " \n";
-          Serial.print(CMD_response);
+          gen_response2(CMD_ok, ENC_left, ENC_right);
+          Serial.write("Encoder query rcvd \n");
           break;
         }
         case ENVEL_enq: {
@@ -176,14 +210,13 @@ void loop()
           
           delay(1000); // wait one second to see how many ticks have transpired
 
-          ENC_left_delta = encoder.getTicks(LEFT) - ENC_left;
-          ENC_right_delta = encoder.getTicks(RIGHT) - ENC_right;
+          ENC_left_delta = (float) (encoder.getTicks(LEFT) - ENC_left);
+          ENC_right_delta = (float) (encoder.getTicks(RIGHT) - ENC_right);
           VEL_left = (ENC_left_delta/TICKS_PER_REVOLUTION)*2*PI*WHEEL_RADIUS;
           VEL_right = (ENC_right_delta/TICKS_PER_REVOLUTION)*2*PI*WHEEL_RADIUS;
           
-          CMD_response = CMD_ok + 2 + VEL_left + VEL_right;
-          CMD_response = CMD_response + " \n";
-          Serial.print(CMD_response);
+          gen_response2_float(CMD_ok, VEL_left, VEL_right);
+          Serial.write("Wheel velocity query rcvd \n");
           break;
         }
         case IRVAL_enq: {
@@ -191,16 +224,16 @@ void loop()
           // we will use SENTINAL value for all IR sensors that don't exist
           // IR2 iwill be returned from an analog read 
           
-          CMD_response = CMD_ok + 5 + ir0 + ir1 + ir2 + ir3 + ir4 + " \n";
-          Serial.print(CMD_response);
+          gen_response5(CMD_ok, ir0, ir1, ir2, ir3, ir4);
+          Serial.write("IR sensor query rcvd \n");
           break;
         }
         case CHECK: {
           // Clear encoders and send back command rcvd & processed good status
           encoder.clearEnc(BOTH);
           
-          CMD_response = CMD_ok + 0 + " \n";
-          Serial.print(CMD_response);
+          gen_response0(CMD_ok);
+          Serial.write("Check command rcvd \n");
           break;
         }
         case ENC_test: { // a tester to run to encoder for L and R wheel
@@ -233,13 +266,11 @@ void loop()
           }
           motors.rightMotor(0);
           
-          CMD_response = CMD_ok + 0 + " \n";
-          Serial.print(CMD_response);
+          gen_response0(CMD_ok);
           break;
         }
         default: {
-          CMD_response = CMD_unk + 0;
-          Serial.print(CMD_response);
+          gen_response0(CMD_unk);
           break;
         }
       } // end switch
