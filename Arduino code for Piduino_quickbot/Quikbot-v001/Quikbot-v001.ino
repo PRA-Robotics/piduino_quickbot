@@ -115,30 +115,38 @@ void gen_response0(int resp)
 }
 void loop()
 {
-  int command_code=0; 
-  String CMD_response = "";
-  int len_input=0;
-  int ir0=1024, ir1=1024, ir2=0, ir3=1024, ir4=1024; // infared sensor voltage return, 133 is default for no obstacles being sensed
-  
-  String morse2display="012345678901234567890";
-  
-  const int RESET=10, PWM_set=20, PWM_enq=30, ENVAL_enq=40, ENVEL_enq=50, IRVAL_enq=60, CHECK=70, ENC_test=255;
-        // Define command codes
-  const int CMD_ok=0, CMD_unk=100, INT_zero=110, INT_one=120, INT_out_of_range = 130;
-  int PWM_left = 0, PWM_right=0; 
-  long PWM_left_inp=0, PWM_right_inp=0, ENC_left=0, ENC_right=0;
   const float WHEEL_RADIUS = 6.5/2; // CM as measured by Ray
   const float TICKS_PER_REVOLUTION = 189.0; // ranges from 178 to 200 but best luck with 189?
+  const int RESET=10, PWM_set=20, PWM_enq=30, ENVAL_enq=40, ENVEL_enq=50, IRVAL_enq=60, CHECK=70, TOGGLE_debug = 254, ENC_test=255;
+        // Define command codes
+  const int CMD_ok=0, CMD_unk=100, INT_zero=110, INT_one=120, INT_out_of_range = 130;
+  const int NO_SENSOR = 1024;
+  const int PWM_ZERO = 256;
+
+  static int PWM_left = 0, PWM_right = 0;
+  static bool debug = true;
+ 
+  String CMD_response = "";
+  String morse2display="012345678901234567890";
+
+  int command_code=0; 
+  int len_input=0;
+  int ir0=NO_SENSOR, ir1=NO_SENSOR, ir2=0, ir3=NO_SENSOR, ir4=NO_SENSOR; // infared sensor voltage return, 133 is default for no obstacles being sensed 
+  
+  unsigned long elapsed_time=0;
+  long PWM_left_inp=0, PWM_right_inp=0, ENC_left=0, ENC_right=0;
+ 
   float VEL_left = 0.0, VEL_right= 0.0, ENC_left_delta = 0.0, ENC_right_delta=0.0;
   
   digitalWrite(13, LOW);
   
   // check if command available from USB port
   if (Serial) {
+    command_code=0;
     len_input=Serial.available();
     if (len_input > 2) {
       command_code = Serial.parseInt();
-      display_morsecode(String(command_code));
+      if (debug) { display_morsecode(String(command_code)); }
      
       // perform function given across serial port
       switch (command_code) {
@@ -149,7 +157,7 @@ void loop()
           PWM_left=0;
           PWM_right-0;
           gen_response0(CMD_ok);
-          Serial.write("RESET Rcvd \n");
+          if (debug) {Serial.write("RESET Rcvd \n");}
           break;
         }
         case PWM_set: {
@@ -165,10 +173,10 @@ void loop()
             gen_response0(INT_one);
             break;
           }
-          if (PWM_left_inp == 256) { // we use 256 to indicate a power level of 0
+          if (PWM_left_inp == PWM_ZERO) { // we use 256 to indicate a power level of 0
             PWM_left_inp = 0; 
           }
-          if (PWM_right_inp == 256)  { // we use 256 to indicate a power level of 0
+          if (PWM_right_inp == PWM_ZERO)  { // we use 256 to indicate a power level of 0
             PWM_right_inp = 0; 
           }
           if (PWM_left_inp > -255 && PWM_left_inp < 255 && PWM_right_inp > -255 && PWM_right_inp < 255) {
@@ -179,7 +187,7 @@ void loop()
             motors.rightMotor(PWM_right_inp);
             
             gen_response2(CMD_ok, PWM_left, PWM_right);
-            Serial.write("Set PWM rcvd \n");
+            if(debug) {Serial.write("Set PWM rcvd \n");}
             break;
           } else {
             // some power value is out of range
@@ -191,7 +199,7 @@ void loop()
           // send motor power values L,r saved from last power set cmd;
           
           gen_response2(CMD_ok, PWM_left, PWM_right);
-          Serial.write("PWM query rcvd \n");
+          if (debug) {Serial.write("PWM query rcvd \n");}
           break;
         }
         case ENVAL_enq: {
@@ -200,7 +208,7 @@ void loop()
           ENC_right= encoder.getTicks(RIGHT);
           
           gen_response2(CMD_ok, ENC_left, ENC_right);
-          Serial.write("Encoder query rcvd \n");
+          if (debug) {Serial.write("Encoder query rcvd \n");}
           break;
         }
         case ENVEL_enq: {
@@ -208,7 +216,8 @@ void loop()
           ENC_left= encoder.getTicks(LEFT);
           ENC_right= encoder.getTicks(RIGHT);
           
-          delay(1000); // wait one second to see how many ticks have transpired
+          elapsed_time=millis();
+          while ((millis()-elapsed_time) < 1000) { }// wait one second to see how many ticks have transpired
 
           ENC_left_delta = (float) (encoder.getTicks(LEFT) - ENC_left);
           ENC_right_delta = (float) (encoder.getTicks(RIGHT) - ENC_right);
@@ -216,7 +225,16 @@ void loop()
           VEL_right = (ENC_right_delta/TICKS_PER_REVOLUTION)*2.0*PI*WHEEL_RADIUS;
           
           gen_response2_float(CMD_ok, VEL_left, VEL_right);
-          Serial.write("Wheel velocity query rcvd \n");
+          if (debug) {
+            Serial.print(ENC_left_delta, 4);
+            Serial.print(" left delta:old left ");
+            Serial.print(ENC_left, DEC);
+            Serial.print("   -   ");
+            Serial.print(ENC_right_delta, 4);
+            Serial.print(" right delta:old right ");
+            Serial.print(ENC_right, DEC);
+            Serial.write("\n Wheel velocity query rcvd \n");
+          }
           break;
         }
         case IRVAL_enq: {
@@ -225,7 +243,7 @@ void loop()
           // IR2 iwill be returned from an analog read 
           
           gen_response5(CMD_ok, ir0, ir1, ir2, ir3, ir4);
-          Serial.write("IR sensor query rcvd \n");
+          if (debug) {Serial.write("IR sensor query rcvd \n");}
           break;
         }
         case CHECK: {
@@ -233,7 +251,17 @@ void loop()
           encoder.clearEnc(BOTH);
           
           gen_response0(CMD_ok);
-          Serial.write("Check command rcvd \n");
+          if (debug) {Serial.write("Check command rcvd \n");}
+          break;
+        }
+        case TOGGLE_debug:{ // used to turn debug on or off (true or false)
+          if (debug) {
+              debug=false;
+            } else {
+              debug=true;
+            }
+          gen_response0(CMD_ok);
+          if (debug) {Serial.print("Debug cmd rcvd \n");}
           break;
         }
         case ENC_test: { // a tester to run to encoder for L and R wheel
@@ -265,8 +293,9 @@ void loop()
             ENC_right=encoder.getTicks(RIGHT);
           }
           motors.rightMotor(0);
-          
+         
           gen_response0(CMD_ok);
+          if (debug) {Serial.write("ENC test cmd rcvd \n");}
           break;
         }
         default: {
