@@ -23,6 +23,10 @@ Command Codes:
 
 '70':	CHECK query command, an artifact of this command is that the wheel motor encoders will be cleared, i.e, set to 0, the servo-sensor motor will begin scanning and the motor power will be set to 0. Note a CHECK command should be sent as the first command to the bot
 
+'254':	TOGGLE debug prints, DEBUG is initialized to TRUE, with this command you can change it to FALSE. With DEBUG=true, Piduino will output text strings for debug throughout the code. IF YOU DONT WANT TO SEE THESE AT ALL, issue the 254 command as the first command to the Piduino.
+
+'255':	RUN TO ENCODER command, requires two INTs, Encoder offsets for left and right motor. This command will automatically set left motor power to -32 and run to whatever encoder delta you have specified in first INT, then waits 5 seconds and then sets the right motor power to +32 and then runs to whatever encoder offset you have set in the second INT.
+
 Command Response:
 "<INT> <INT> <INT> (INT|FLOAT(n))\n"
 <Command Code> <Response Code> <Number of trailing Integers|Floats> (Optional Integers) newline.
