@@ -19,12 +19,12 @@ RFD77402 myDistance; // create ToF sensor instance
 
 const float WHEEL_RADIUS = 6.5/2; // CM as measured by Ray
 const float TICKS_PER_REVOLUTION = 189.0; // ranges from 178 to 200 but best luck with 189?
-const int RESET=10, PWM_set=20, PWM_enq=30, ENVAL_enq=40, ENVEL_enq=50, IRVAL_enq=60, CHECK=70, CONFIG=00, TOGGLE_debug = 254, ENC_test=255;
+const int RESET=10, PWM_set=20, PWM_enq=30, ENVAL_enq=40, ENVEL_enq=50, IRVAL_enq=60, CHECK=70, CONFIG=80, TOGGLE_debug = 254, ENC_test=255;
       // Define command codes
 const int CMD_ok=0, CMD_unk=100, INT_zero=110, INT_one=120, INT_out_of_range = 130, CONGIG_code_missing = 140, CONFIG_option_na = 150;
 const int IR_sensor=10, ToF_sweep=20, Optical_enc=10, Digital_enc=20;
 const int NO_SENSOR = 4096;
-const int PWM_ZERO = 256;
+const int PWM_ZERO =  256;
 
 static int PWM_left = 0, PWM_right = 0;
 static bool debug = true;
@@ -57,6 +57,9 @@ void setup()
       {
         if(debug) Serial.println("Sensor failed to initialize. Check wiring.");
         while (1); //Freeze!
+      } else {
+        myservo.write(0);
+        if(debug) Serial.println("Sensor online");
       }
   } else  { // IR sensor
     ir2=analogRead(sensorPin);
@@ -273,48 +276,43 @@ void loop()
           break;
         }
         case IRVAL_enq: {
+          int error_code=0;
           // send IR sensor values IR0, IR1, IR2, IR3, IR4, IR5
           // we will use SENTINAL value for all IR sensors that don't exist
           // IR2 iwill be returned from an analog read 
           if (Distance_sensor==ToF_sweep) {
               myservo.write(0); // take distance measurement at 0 deg
-              myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
-              ir0 = myDistance.getDistance(); // retrieve measurement 
+              delay(10); // should be at position 0 
+              error_code=myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
+              if (error_code==CODE_VALID_DATA) ir0 = myDistance.getDistance(); // retrieve measurement 
+              else ir0=NO_SENSOR;              
               
               myservo.write(45); // take distance measurement at 45 deg
-              myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
-              ir1 = myDistance.getDistance(); // retrieve measurement
+              delay(150); // wait for servo to reach position
+              error_code=myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
+              if (error_code==CODE_VALID_DATA) ir1 = myDistance.getDistance(); // retrieve measurement
+              else ir1=NO_SENSOR;  
             
               myservo.write(90); // take distance measurement at 45 deg
-              myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
-              ir2 = myDistance.getDistance(); // retrieve measurement            
+              delay(150); // wait for servo to reach position
+              error_code=myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
+              if (error_code==CODE_VALID_DATA) ir2 = myDistance.getDistance(); // retrieve measurement 
+              else ir2=NO_SENSOR;      
             
               myservo.write(135); // take distance measurement at 45 deg
-              myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
-              ir3 = myDistance.getDistance(); // retrieve measurement
+              delay(150); // wait for servo to reach position
+              error_code=myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
+              if (error_code==CODE_VALID_DATA) ir3 = myDistance.getDistance(); // retrieve measurement
+              else ir2=NO_SENSOR; 
             
               myservo.write(180); // take distance measurement at 45 deg
-              myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
-              ir4 = myDistance.getDistance(); // retrieve measurement
+              delay(150); // wait for servo to reach position
+              error_code=myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
+              if (error_code==CODE_VALID_DATA) ir4 = myDistance.getDistance(); // retrieve measurement
+              else ir2=NO_SENSOR; 
 
-              if (debug) {
-                Serial.print(" d@0: "); //Print the distance
-                Serial.print(ir0);
-                Serial.print("mm ");
-                Serial.print("d@45: "); //Print the distance
-                Serial.print(ir1);
-                Serial.print("mm ");
-                Serial.print("d@90: "); //Print the distance
-                Serial.print(ir2);
-                Serial.print("mm ");
-                Serial.print("d@135: "); //Print the distance
-                Serial.print(ir3);
-                Serial.print("mm " );
-                Serial.print("d@180: "); //Print the distance
-                Serial.print(ir4);
-                Serial.print("mm " );
-                Serial.println();
-              }
+              myservo.write(0); // reset sensor to 0 degrees position for next sample
+              
           } else {
              ir2=analogRead(sensorPin);
              if (debug) {
@@ -343,11 +341,11 @@ void loop()
           Distance_int= Serial.parseInt();
           Encoder_int= Serial.parseInt();
           // check for proper config values
-          if (Distance_int!=ToF_sweep || Distance_int!=IR_sensor || Encoder_int!=Optical_enc || Encoder_int!=Digital_enc) {
+          if ((Distance_int!=ToF_sweep && Distance_int!=IR_sensor) || (Encoder_int!=Optical_enc && Encoder_int!=Digital_enc))  {
             // config values incorrect, send error response
             gen_response2(INT_out_of_range, Distance_int, Encoder_int);
             break;
-          }
+          } 
           if (Distance_int==ToF_sweep) Distance_sensor=ToF_sweep;
           else Distance_sensor=IR_sensor;
           
