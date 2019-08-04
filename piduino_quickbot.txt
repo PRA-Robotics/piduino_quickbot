@@ -1,4 +1,8 @@
-Pi to Arduino Protocol
+Pi to Arduino Protocol Specification v002
+Change history
+v000 protocol initially specified: 07Jul2019 by MikeH & RayL at Mike's house
+v001 protocol revision, 09Jul2019: to define command codes, response codes and debug command
+v002 protocol revision, 03Aug2019: added CONFIG command to setup use of ToF sweep sensor or IR sensor, Changed IR sensor not present value to 4096 (TOF can sense up to +2000mm)
 
 Command list is documented PySimiam /pysimiam-coursera-week6/robots/qb_realtime_comm.py python file and is different than what's in the BBB file.
 
@@ -9,6 +13,7 @@ Pi to Arduino Command
 <Command Code> (Optional Integer Args) newline
 
 Command Codes:
+
 '10':	RESET command and will stop the redbot-quikbot, once a reset command is received the motor power will be set to 0, the servo-sensor motors will be stopped and the bot will  stop all movement. The bot will stop listening to the serial interface after processing this command and sending a response. 
 
 '20':	PWM Set command sets the power of the two motors, expects two int arguments each in range o -255..+256, NB for a power value of 0 substitute 256 [Arduino parseInt() returns 0 if there's no integer characters present] LEFT motor is first and the second is RIGHT motor
@@ -19,9 +24,14 @@ Command Codes:
 
 '50':	ENVEL query command, returns two float velocities of the two wheels (CM/Sec). This command will take at least 1 second to execute as that's the time it will wait while the motors move. The velocity is a calculation based on 1 second of time and will calculate the velocity = (delta-tick)/ticks-rotation*2*PI*R(adits of wheel)/seconds, and is two floating point numbers,  LEFT motor is first and the second is RIGHT motor. Velocity is returned you both wheels and are in CM/Sec.
 
-'60':	IRVAL query command, returns the 5 int IR sensor values, range of values is 0..1023, We will use 1204 to indicate the sensor is not present. The sensors are provided in a clockwise direction starting at the back of the bot, so the first IR value reported is right behind the LEFT wheel and the last IR value reported is right behind the RIGHT wheel when looking at the bot from the top.
+'60':	IRVAL query command, returns the 5 int distance sensor values, range of values is 0..2048, We will use 4096 to indicate that a particular sensor is not present. The sensors are provided in a clockwise direction starting at the back of the bot, so the first IR value reported is right behind the LEFT wheel and the last IR value reported is right behind the RIGHT wheel when looking at the bot from the top.
+- For IR sensors (see CONFIG command above), we will sense the 
 
-'70':	CHECK query command, an artifact of this command is that the wheel motor encoders will be cleared, i.e, set to 0, the servo-sensor motor will begin scanning and the motor power will be set to 0. Note a CHECK command should be sent as the first command to the bot
+'70':	CHECK query command, an artifact of this command is that the wheel motor encoders will be cleared, i.e, set to 0, the servo-sensor motor will begin scanning and the motor power will be set to 0. Note a CHECK command should be sent as the first command to the bot.
+
+'80':	CONFIG command, this tells quikbot which distance and encoder sensors to use
+-	Distance sensor configuration: Either IR Sensor(s) (Optional INT0 = '128') or ToF-sweep mechanism (Optional INT0 = '64'), only one of these values can be specified for Optional INT0. Default for QuikBot-v002 is ToF-sweep sensor.
+-	Encoder configuration: Optical encoders (Optional INT1 = '128'), digital encoders (Optional INT1 = '64'), only one of these values can be specified for Optional INT1, Default for QuikBot-v002 is Optical_encoders
 
 '254':	TOGGLE debug prints, DEBUG is initialized to TRUE, with this command you can change it to FALSE. With DEBUG=true, Piduino will output text strings for debug throughout the code. IF YOU DONT WANT TO SEE THESE AT ALL, issue the 254 command as the first command to the Piduino.
 
@@ -35,13 +45,15 @@ Response codes returned from Piduino_quickbot:
 '0':	Command received and processed, number of integers/floats returned is indicated by the next int. Just for reference purposes, PMW set, PWM query & ENVAL query return 2 Ints, ENVEL query return 2 Floats and IRVAL query returns 5 Ints
 
 NB: 
-1) The two ints returned PWM set and PWM query are the power values that we set and we will substitute 0 for any input of 256 or more.
+1) The two ints returned PWM set and PWM query are the power values that we set and we will substitute 0 for any input=256
 2) The two floats returned from ENVAL query command are the velocity of right and left wheel in CM/sec;
 
 '100':	Unknown command code received, no action taken by Piduino_quickbot
-'110': 	No INT values were found, for PWM, there are supposed to be two INT values, and we could not detect any
-'120':	2nd INT value could not be found, for PWM command there are supposed to be two INTs, we found the first but were unable to find the second
+'110': 	No INT values were found, for PWM and CONFIG, there are supposed to be two INT values, and we could not detect any
+'120':	2nd INT value could not be found, for PWM and CONFIG command there are supposed to be two INTs, we found the first but were unable to find the second
 '130': 	One or more of the INT values out of range, the PWM ints can be in the range of -255..+256, anything outside that range will cause the command to be rejected and the values ignored
+'140':	Configuration option (Distance Sensor or Encoder Sensor) type not supported in code
+'150': 	Configuration option (Distance Sensor or Encoder Sensor) type not available in current QuikBot
 
 
 

@@ -1,0 +1,413 @@
+/* 
+ *  SKetch accepts numerical versions of Pysimiam commands
+ *  08july2019 version
+ */
+#include <RedBot.h>
+
+#include <Servo.h>
+#include <SparkFun_RFD77402_Arduino_Library.h>
+
+
+static int sensorPin=A6;  // initialize a analog sensor object on A6
+
+RedBotMotors motors;
+RedBotEncoder encoder = RedBotEncoder(A1, A4);
+
+Servo myservo;  // create servo object to control a servo
+
+RFD77402 myDistance; // create ToF sensor instance
+
+const float WHEEL_RADIUS = 6.5/2; // CM as measured by Ray
+const float TICKS_PER_REVOLUTION = 189.0; // ranges from 178 to 200 but best luck with 189?
+const int RESET=10, PWM_set=20, PWM_enq=30, ENVAL_enq=40, ENVEL_enq=50, IRVAL_enq=60, CHECK=70, CONFIG=00, TOGGLE_debug = 254, ENC_test=255;
+      // Define command codes
+const int CMD_ok=0, CMD_unk=100, INT_zero=110, INT_one=120, INT_out_of_range = 130, CONGIG_code_missing = 140, CONFIG_option_na = 150;
+const int IR_sensor=10, ToF_sweep=20, Optical_enc=10, Digital_enc=20;
+const int NO_SENSOR = 4096;
+const int PWM_ZERO = 256;
+
+static int PWM_left = 0, PWM_right = 0;
+static bool debug = true;
+static int Distance_sensor = ToF_sweep; // default is ToF sweep sensor
+static int Encoder_sensor = Optical_enc; // default is optical encoders
+
+
+int dot_time_unit = 50;          // delay time for dot in msec
+int pos = 0;    // variable to store the servo position
+int ir0=NO_SENSOR, ir1=NO_SENSOR, ir2=0, ir3=NO_SENSOR, ir4=NO_SENSOR; // infared sensor voltage return, 133 is default for no obstacles being sensed 
+
+void setup()
+{
+  // initialize serial port
+  Serial.begin(9600);    // serial / USB port
+  while (!Serial) { // wait for seriol port to be ready 
+    }
+  
+  //initialize motors
+  motors.stop();
+  if (Encoder_sensor==Optical_enc) encoder.clearEnc(BOTH);
+
+  // setup LED for morse codes
+  pinMode(13, OUTPUT);
+
+  if (Distance_sensor==ToF_sweep) {
+     myservo.attach(6); // servo is on pin 6
+     if (debug) Serial.println("Initializing Sensor");
+     if (myDistance.begin() == false) //Initializes the sensor. Tells the user if initialization has failed.
+      {
+        if(debug) Serial.println("Sensor failed to initialize. Check wiring.");
+        while (1); //Freeze!
+      }
+  } else  { // IR sensor
+    ir2=analogRead(sensorPin);
+  } 
+}
+
+void display_morsecode(String code)
+{
+  int code_len = code.length();
+  int dot_time = dot_time_unit;
+  int dash_time = dot_time_unit *3;
+  for (int i=0; i<code_len; i++) {
+    if (code.charAt(i) == '.') {
+      digitalWrite(13, HIGH);             // Turn on the LED for dot
+      delay(dot_time);               // Usec for a 1* dot time period
+    } else { // then it's a dash
+      digitalWrite(13, HIGH);               // Turn on the LED for a dash
+      delay(dash_time);               // a dash is 3 * dot time period
+    }
+    digitalWrite(13, LOW);      // turn off for one dot time unit after a Dot|Dash
+    delay(dot_time_unit);
+    } // end for code
+  digitalWrite(13, LOW);
+  delay(dash_time);                 // turn off for 3 (2+1 @end of char) dot times units after character
+} // end display_morsecode
+    
+void string2morse(String error_string)
+{ 
+  int err_str_len = error_string.length();
+  int maxmorsechar = 72;    // number of characters in morse we support
+  
+  String morsetable[maxmorsechar]={"Aa", ".-", "Bb", "-...", "Cc", "-.-.", "Dd", "-..", "Eo", ".", "Ff", 
+  "..-.", "Gg", "--..", "Hh", "....", "Ii", "..", "Jj", ".---", "Kk", "-.-", "Ll", ".-..",
+  "Mm", "--", "Nn", "-.","Oo", "---", "Pp", ".--.", "Qq", "--.-", "Rr", ".-.",
+  "Ss", "...", "Tt", "-", "Uu", "..-", "Vv", "...-", "Ww", ".--", "Xx", "-..-", "Yy", "-.--", "Zz", "--..",
+  "11", ".----", "22", "..---", "33", "...--", "44", "....-", "55", ".....", 
+  "66", "-....", "77", "--...", "88", "---..", "99", "----.", "00", "-----"}; 
+       
+  for (int j=0; j< err_str_len; j++) {
+    for (int i=0; i<maxmorsechar; i=i+2) {
+      if ( (error_string.charAt(j) == morsetable[i].charAt(0)) or (error_string.charAt(j) == morsetable[i].charAt(1)) ) {
+        display_morsecode(morsetable[i+1]); 
+      } // end if
+    } // end moresetable scan
+  } // end chars2display loop
+  digitalWrite(13, LOW);              // Turn off the LED  
+  delay(7*dot_time_unit);             // delay 7 dots between words 
+} // end string2morse
+
+void gen_response5(int resp, int i1, int i2, int i3, int i4, int i5)
+{ 
+  Serial.print(resp, DEC);
+  Serial.print(" ");
+  Serial.print(5, DEC);
+  Serial.print(" ");
+  Serial.print(i1, DEC);
+  Serial.print(" ");
+  Serial.print(i2, DEC);
+  Serial.print(" ");
+  Serial.print(i3, DEC);
+  Serial.print(" ");
+  Serial.print(i4, DEC);
+  Serial.print(" ");
+  Serial.println(i5, DEC);
+}
+
+void gen_response2(int resp, int i1, int i2)
+{ 
+  Serial.print(resp, DEC);
+  Serial.print(" ");
+  Serial.print(2, DEC);
+  Serial.print(" ");
+  Serial.print(i1, DEC);
+  Serial.print(" ");
+  Serial.println(i2, DEC);
+}
+
+void gen_response2_float(int resp, float f1, float f2)
+{ 
+  Serial.print(resp, DEC);
+  Serial.print(" ");
+  Serial.print(2, DEC);
+  Serial.print(" ");
+  Serial.print(f1, 4); // to four decimal places
+  Serial.print(" ");
+  Serial.println(f2, 4); // to four decimal places
+}
+
+void gen_response0(int resp)
+{ 
+  Serial.print(resp, DEC);
+  Serial.print(" ");
+  Serial.println(0, DEC);
+}
+
+void loop()
+{
+  
+  String CMD_response = "";
+  String morse2display="012345678901234567890";
+
+  int command_code=0; 
+  int len_input=0;
+  int ir0=NO_SENSOR, ir1=NO_SENSOR, ir2=0, ir3=NO_SENSOR, ir4=NO_SENSOR; // infared sensor voltage return, 133 is default for no obstacles being sensed 
+  int Distance_int=0, Encoder_int=0;
+  
+  unsigned long elapsed_time=0;
+  long PWM_left_inp=0, PWM_right_inp=0, ENC_left=0, ENC_right=0;
+ 
+  float VEL_left = 0.0, VEL_right= 0.0, ENC_left_delta = 0.0, ENC_right_delta=0.0;
+  
+  digitalWrite(13, LOW);
+  
+  // check if command available from USB port
+  if (Serial) {
+    command_code=0;
+    len_input=Serial.available();
+    if (len_input > 2) {
+      command_code = Serial.parseInt();
+      if (debug) { display_morsecode(String(command_code)); }
+     
+      // perform function given across serial port
+      switch (command_code) {
+        case RESET: {
+          // reset all robot sensors, motors, etc.
+          motors.rightMotor(0);
+          motors.leftMotor(0);
+          PWM_left=0;
+          PWM_right-0;
+          gen_response0(CMD_ok);
+          if (debug) {Serial.write("RESET Rcvd \n");}
+          break;
+        }
+        case PWM_set: {
+          // set motor power to L, R
+          PWM_left_inp= Serial.parseInt();
+          PWM_right_inp= Serial.parseInt();
+          // display_morsecode(String(PWM_left_inp + "SOS" + PWM_right_inp));
+          if (PWM_left_inp == 0 && PWM_right_inp == 0) {
+            gen_response0(INT_zero);
+            break;
+          }
+          if (PWM_right_inp == 0) { 
+            gen_response0(INT_one);
+            break;
+          }
+          if (PWM_left_inp == PWM_ZERO) { // we use 256 to indicate a power level of 0
+            PWM_left_inp = 0; 
+          }
+          if (PWM_right_inp == PWM_ZERO)  { // we use 256 to indicate a power level of 0
+            PWM_right_inp = 0; 
+          }
+          if (PWM_left_inp > -255 && PWM_left_inp < 255 && PWM_right_inp > -255 && PWM_right_inp < 255) {
+            // PWM settings have to be in range -255..+255
+            PWM_left = PWM_left_inp; // save the power values as there's no way of reading them,
+            PWM_right = PWM_right_inp;
+            motors.leftMotor(PWM_left_inp);
+            motors.rightMotor(PWM_right_inp);
+            
+            gen_response2(CMD_ok, PWM_left, PWM_right);
+            if(debug) {Serial.write("Set PWM rcvd \n");}
+            break;
+          } else {
+            // some power value is out of range
+            gen_response2(INT_out_of_range, PWM_left, PWM_right);
+            break;
+          }
+        } // end power motor set command functionality
+        case PWM_enq: {
+          // send motor power values L,r saved from last power set cmd;
+          
+          gen_response2(CMD_ok, PWM_left, PWM_right);
+          if (debug) {Serial.write("PWM query rcvd \n");}
+          break;
+        }
+        case ENVAL_enq: {
+          // send motor encoder values L, R 
+          if (Encoder_sensor == Optical_enc) {
+            ENC_left= encoder.getTicks(LEFT);
+            ENC_right= encoder.getTicks(RIGHT);
+            
+            gen_response2(CMD_ok, ENC_left, ENC_right);
+          } else {
+            // no code available for digital encoders
+             gen_response0(CONGIG_code_missing);
+          }
+          if (debug) {Serial.write("Encoder query rcvd \n");}
+          break;
+        }
+        case ENVEL_enq: {
+          // send motor velocity values L, R
+          ENC_left= encoder.getTicks(LEFT);
+          ENC_right= encoder.getTicks(RIGHT);
+          
+          elapsed_time=millis();
+          while ((millis()-elapsed_time) < 1000) { }// wait one second to see how many ticks have transpired
+
+          ENC_left_delta = (float) (encoder.getTicks(LEFT) - ENC_left);
+          ENC_right_delta = (float) (encoder.getTicks(RIGHT) - ENC_right);
+          VEL_left = (ENC_left_delta/TICKS_PER_REVOLUTION)*2.0*PI*WHEEL_RADIUS;
+          VEL_right = (ENC_right_delta/TICKS_PER_REVOLUTION)*2.0*PI*WHEEL_RADIUS;
+          
+          gen_response2_float(CMD_ok, VEL_left, VEL_right);
+          if (debug) {
+            Serial.print(ENC_left_delta, 4);
+            Serial.print(" left delta:old left ");
+            Serial.print(ENC_left, DEC);
+            Serial.print("   -   ");
+            Serial.print(ENC_right_delta, 4);
+            Serial.print(" right delta:old right ");
+            Serial.print(ENC_right, DEC);
+            Serial.write("\n Wheel velocity query rcvd \n");
+          }
+          break;
+        }
+        case IRVAL_enq: {
+          // send IR sensor values IR0, IR1, IR2, IR3, IR4, IR5
+          // we will use SENTINAL value for all IR sensors that don't exist
+          // IR2 iwill be returned from an analog read 
+          if (Distance_sensor==ToF_sweep) {
+              myservo.write(0); // take distance measurement at 0 deg
+              myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
+              ir0 = myDistance.getDistance(); // retrieve measurement 
+              
+              myservo.write(45); // take distance measurement at 45 deg
+              myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
+              ir1 = myDistance.getDistance(); // retrieve measurement
+            
+              myservo.write(90); // take distance measurement at 45 deg
+              myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
+              ir2 = myDistance.getDistance(); // retrieve measurement            
+            
+              myservo.write(135); // take distance measurement at 45 deg
+              myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
+              ir3 = myDistance.getDistance(); // retrieve measurement
+            
+              myservo.write(180); // take distance measurement at 45 deg
+              myDistance.takeMeasurement();  // Tell ToF sensor to take measurement
+              ir4 = myDistance.getDistance(); // retrieve measurement
+
+              if (debug) {
+                Serial.print(" d@0: "); //Print the distance
+                Serial.print(ir0);
+                Serial.print("mm ");
+                Serial.print("d@45: "); //Print the distance
+                Serial.print(ir1);
+                Serial.print("mm ");
+                Serial.print("d@90: "); //Print the distance
+                Serial.print(ir2);
+                Serial.print("mm ");
+                Serial.print("d@135: "); //Print the distance
+                Serial.print(ir3);
+                Serial.print("mm " );
+                Serial.print("d@180: "); //Print the distance
+                Serial.print(ir4);
+                Serial.print("mm " );
+                Serial.println();
+              }
+          } else {
+             ir2=analogRead(sensorPin);
+             if (debug) {
+                Serial.print("IR2 Sensor:");
+                Serial.print(ir2);
+                Serial.print("mm ");
+                Serial.println();
+              }
+          }
+                      
+          gen_response5(CMD_ok, ir0, ir1, ir2, ir3, ir4);
+          if (debug) Serial.write("IR sensor query rcvd \n");
+          break;
+        }
+        case CHECK: {
+          // Clear encoders and send back command rcvd & processed good status
+          encoder.clearEnc(BOTH);
+          
+          gen_response0(CMD_ok);
+          if (debug) {Serial.write("Check command rcvd \n");}
+          break;
+        }
+        case CONFIG: {
+          // Set up to use IR sensor or ToF-sweep sensor for distance and optical or digital encoders
+          // read Distance sensor and Encoder sensor values
+          Distance_int= Serial.parseInt();
+          Encoder_int= Serial.parseInt();
+          // check for proper config values
+          if (Distance_int!=ToF_sweep || Distance_int!=IR_sensor || Encoder_int!=Optical_enc || Encoder_int!=Digital_enc) {
+            // config values incorrect, send error response
+            gen_response2(INT_out_of_range, Distance_int, Encoder_int);
+            break;
+          }
+          if (Distance_int==ToF_sweep) Distance_sensor=ToF_sweep;
+          else Distance_sensor=IR_sensor;
+          
+          if (Encoder_int==Optical_enc) Encoder_sensor=Optical_enc;
+          else Encoder_sensor=Digital_enc;
+          
+          gen_response0(CMD_ok);
+          if (debug) Serial.write("Config command rcvd \n");
+          break;
+        }
+        case TOGGLE_debug:{ // used to turn debug on or off (true or false)
+          if (debug) {
+              debug=false;
+            } else {
+              debug=true;
+            }
+          gen_response0(CMD_ok);
+          if (debug) {Serial.print("Debug cmd rcvd \n");}
+          break;
+        }
+        case ENC_test: { // a tester to run to encoder for L and R wheel
+          // stop motors
+          motors.leftMotor(0);
+          motors.rightMotor(0);
+
+          // figure out what the encoder value we need to reach 
+          ENC_left_delta = Serial.parseInt(); // get encoder values for both wheels.
+          ENC_right_delta = Serial.parseInt();
+          ENC_left_delta = ENC_left_delta + encoder.getTicks(LEFT);
+          ENC_right_delta = ENC_right_delta + encoder.getTicks(RIGHT);
+
+          // test left motor encoder 
+          ENC_left = encoder.getTicks(LEFT);
+          while (ENC_left < ENC_left_delta) {
+            motors.leftMotor(-32);
+            delay(100);
+            ENC_left=encoder.getTicks(LEFT);
+          }
+          motors.leftMotor(0);
+          delay(5000);
+          
+          // test right motor encoder 
+          ENC_right=encoder.getTicks(RIGHT);
+          while (ENC_right < ENC_right_delta) {
+            motors.rightMotor(32);
+            delay(50);
+            ENC_right=encoder.getTicks(RIGHT);
+          }
+          motors.rightMotor(0);
+         
+          gen_response0(CMD_ok);
+          if (debug) {Serial.write("ENC test cmd rcvd \n");}
+          break;
+        }
+        default: {
+          gen_response0(CMD_unk);
+          break;
+        }
+      } // end switch
+    } // end end if len > 1   
+  } // if CSeriol)
+
+}
