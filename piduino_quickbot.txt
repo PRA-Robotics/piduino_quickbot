@@ -25,7 +25,8 @@ Command Codes:
 '50':	ENVEL query command, returns two float velocities of the two wheels (CM/Sec). This command will take at least 1 second to execute as that's the time it will wait while the motors move. The velocity is a calculation based on 1 second of time and will calculate the velocity = (delta-tick)/ticks-rotation*2*PI*R(adits of wheel)/seconds, and is two floating point numbers,  LEFT motor is first and the second is RIGHT motor. Velocity is returned you both wheels and are in CM/Sec.
 
 '60':	IRVAL query command, returns the 5 int distance sensor values, range of values is 0..2048, We will use 4096 to indicate that a particular sensor is not present. The sensors are provided in a clockwise direction starting at the back of the bot, so the first IR value reported is right behind the LEFT wheel and the last IR value reported is right behind the RIGHT wheel when looking at the bot from the top.
-- For IR sensors (see CONFIG command above), we will sense the 
+- For IR sensors (see CONFIG command below), we will sense the IR sensor value (NB, code currently defaults to ToF sweep
+- For TOF sweep (see CONFIG command below), we will sweep ToF sensor through 0, 45, 90, 135 and 180 deg and take measurements at each position.
 
 '70':	CHECK query command, an artifact of this command is that the wheel motor encoders will be cleared, i.e, set to 0, the servo-sensor motor will begin scanning and the motor power will be set to 0. Note a CHECK command should be sent as the first command to the bot.
 
